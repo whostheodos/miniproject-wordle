@@ -62,7 +62,7 @@ void evaluate(const char* target,const char* input) {
 void play() {
     const char* target_word = get_random_word();
     printf("------- WORDLE GAME -------\n");
-    printf("guess the 5-letter word. You have %d attempts.\n", MAX_ATTEMPTS);
+    printf("guess the 5-letter word. You have %d attempts.\n", 5);
     printf("green = correct letter in correct position\n");
     printf("yellow = correct letter in wrong position\n");
     printf("gray = letter not in word\n\n");
