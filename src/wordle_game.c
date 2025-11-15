@@ -84,18 +84,20 @@ void evaluate(const char* target,const char* input) {
     for (int i = 0; i < word_length; i++) {
         if (input[i] == target[i]) {
             result[i] = 'G';
-            used[i] = 1;
         }else {
+            result[i] = 'N';
+        }
+    }
+    for (int i = 0; i < word_length; i++) {
+        if (input[i] == target[i]) {
             target_count[input[i] - 'A']++;
         }
     }
     for (int i = 0; i < word_length; i++) {
         if (result[i] == 'G') continue;
-        if (target_count[input[i] - 'A'] > 0) {
+        if (target_count[i] > 0) {
             result[i] = 'Y';
-            target_count[input[i] - 'A']--;
-        }else {
-            result[i] = 'N';
+            target_count[i]--;
         }
     }
     for (int i = 0; i < word_length; i++) {
@@ -124,7 +126,6 @@ void play() {
     load_words("data/words.txt");
 
     srand(time(NULL));
-
 
 
 
@@ -162,7 +163,7 @@ void play() {
         attempts++;
 
         if (!won && attempts == 5) {
-            printf("game over,the word was %s :)", target_word);
+            printf("game over,the word was %s :) \n", target_word);
         }
     }
 
