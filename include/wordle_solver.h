@@ -2,6 +2,6 @@
 #define WORDLE_SOLVER_H
 
 void solve(const char* target,const char* input);
-
+void solve_wordle();
 
 #endif

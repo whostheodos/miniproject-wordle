@@ -1,11 +1,9 @@
 #include <stdio.h>
-#include <stdlib.h>
-
 #include "../include/wordle_game.h"
+#include "../include/wordle_solver.h"
 
-int main() {
+int main(){
 
-    play();
-
+    solve_wordle();
     return 0;
 }
