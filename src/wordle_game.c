@@ -10,7 +10,7 @@
 #define GRAY "\033[0;90m"
 #define RESET "\033[0m"
 
-#define MAX_WORDS 100 //max to load
+#define MAX_WORDS 2315 //max to load
 #define WORD_LENGTH 5
 
 char word_list[MAX_WORDS][WORD_LENGTH + 1];
@@ -73,31 +73,41 @@ int is_valid_word(const char* word) {
     for (int i = 0;i < word_length ;i++) {
         if (!isalpha(word[i])) return 0;
     }
-    return 1;
+    for (int i = 0; i < MAX_WORDS; i++) {
+        if (strcasecmp(word, word_list[i]) == 0) {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 void evaluate(const char* target,const char* input) {
     char result[word_length];
     int target_count[26] = {0};
-    int used[word_length] = {0};
+    int used[word_length];
+    memset(used, 0, sizeof(used));
+
+    for (int i = 0; i < word_length; i++) {
+        target_count[target[i] - 'A']++;
+    }
 
     for (int i = 0; i < word_length; i++) {
         if (input[i] == target[i]) {
             result[i] = 'G';
-        }else {
+            used[i] = 1;
+            target_count[input[i] - 'A']--;
+        } else {
             result[i] = 'N';
         }
     }
+
     for (int i = 0; i < word_length; i++) {
-        if (input[i] == target[i]) {
-            target_count[input[i] - 'A']++;
-        }
-    }
-    for (int i = 0; i < word_length; i++) {
-        if (result[i] == 'G') continue;
-        if (target_count[i] > 0) {
+        if (used[i]) continue;
+
+        int idx = input[i] - 'A';
+        if (target_count[idx] > 0) {
             result[i] = 'Y';
-            target_count[i]--;
+            target_count[idx]--;
         }
     }
     for (int i = 0; i < word_length; i++) {
@@ -124,7 +134,6 @@ void play() {
     int won = 0;
 
     load_words("data/words.txt");
-
     srand(time(NULL));
 
 
@@ -168,5 +177,3 @@ void play() {
     }
 
 }
-
-

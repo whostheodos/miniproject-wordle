@@ -149,9 +149,9 @@ void solve(const char* target, const char* input) {
     char **words = NULL;
     int words_count = 0;
 
-    words = load_words(input ? input : "word.txt", &words_count);
+    words = load_words(input ? input : "words.txt", &words_count);
     if (!words || words_count == 0) {
-        fprintf(stderr, "No words loaded from %s\n", input ? input : "word.txt");
+        fprintf(stderr, "No words loaded from %s\n", input ? input : "words.txt");
         free_words(words, words_count);
         return;
     }
