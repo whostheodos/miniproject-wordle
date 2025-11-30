@@ -1,243 +1,395 @@
+// Full automated Wordle solver that:
+// - loads a word list (5-letter words)
+// - always plays first three guesses: "plumb", "crane", "sight"
+// - then uses an elimination strategy: for each candidate guess, simulate feedback
+//   against all remaining possible secrets and choose the guess that minimizes
+//   the expected remaining candidate-size (sum(count^2)/N heuristic).
+// Two modes:
+// - automatic: provide the secret; feedback is computed by the program
+// - interactive: user types feedback for each guess (use 'G' for green, 'Y' for yellow, 'B' for absent/black)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 #include "../include/wordle_solver.h"
 
-#define WORDLEN 5
+
+#define WORD_LEN 5
+#define MAX_WORDS 20000
 #define MAX_ATTEMPTS 6
 
-/* compute Wordle-style feedback: 'g' green, 'y' yellow, 'b' black.
-   fb must be at least WORDLEN+1. */
-static void compute_feedback(const char *secret, const char *guess, char *fb) {
-    int i;
-    int secret_count[26] = {0};
-    int green[WORDLEN] = {0};
-
-    for (i = 0; i < WORDLEN; ++i) fb[i] = '?';
-
-    /* mark greens */
-    for (i = 0; i < WORDLEN; ++i) {
-        if (guess[i] == secret[i]) {
-            fb[i] = 'g';
-            green[i] = 1;
-        }
-    }
-
-    /* count remaining letters in secret */
-    for (i = 0; i < WORDLEN; ++i) {
-        if (!green[i]) {
-            char c = secret[i];
-            if ('A' <= c && c <= 'Z') c = c - 'A' + 'a';
-            if ('a' <= c && c <= 'z') secret_count[c - 'a']++;
-        }
-    }
-
-    /* yellows / blacks */
-    for (i = 0; i < WORDLEN; ++i) {
-        if (fb[i] == 'g') continue;
-        char c = guess[i];
-        if ('A' <= c && c <= 'Z') c = c - 'A' + 'a';
-        if (c < 'a' || c > 'z') { fb[i] = 'b'; continue; }
-        if (secret_count[c - 'a'] > 0) {
-            fb[i] = 'y';
-            secret_count[c - 'a']--;
-        } else {
-            fb[i] = 'b';
-        }
-    }
-    fb[WORDLEN] = '\0';
+static void strlower(char *s) {
+    for (; *s; ++s) *s = (char)tolower((unsigned char)*s);
 }
 
-/* load words (5-letter lowercase a-z) from filename */
-static char **load_words(const char *filename, int *out_count) {
-    FILE *f = fopen(filename, "r");
-    if (!f) {
-        perror("fopen");
-        *out_count = 0;
-        return NULL;
+/* produce Wordle-style feedback:
+   'G' = green (correct position)
+   'Y' = yellow (present but wrong position)
+   'B' = absent
+   feedback must point to a buffer of length >= WORD_LEN+1 */
+static void get_feedback(const char *secret, const char *guess, char *feedback) {
+    int used_secret[WORD_LEN] = {0};
+    for (int i = 0; i < WORD_LEN; ++i) feedback[i] = 'B';
+    feedback[WORD_LEN] = '\0';
+
+    // Greens
+    for (int i = 0; i < WORD_LEN; ++i) {
+        if (guess[i] == secret[i]) {
+            feedback[i] = 'G';
+            used_secret[i] = 1;
+        }
     }
+    // Yellows
+    for (int i = 0; i < WORD_LEN; ++i) {
+        if (feedback[i] == 'G') continue;
+        for (int j = 0; j < WORD_LEN; ++j) {
+            if (!used_secret[j] && guess[i] == secret[j]) {
+                feedback[i] = 'Y';
+                used_secret[j] = 1;
+                break;
+            }
+        }
+    }
+}
+
+/* Load word list from file; returns malloc'd array of strings and sets out_count.
+   Accepts multiple candidate paths in caller; only 5-letter words kept. */
+static char **load_wordlist_path(const char *path, int *out_count) {
+    FILE *f = fopen(path, "r");
+    if (!f) { 
+        *out_count = 0; 
+        return NULL; 
+    }
+    
+    char **list = malloc(sizeof(char*) * MAX_WORDS);
+    if (!list) { fclose(f); *out_count = 0; return NULL; }
 
     char buf[256];
-    char **arr = NULL;
-    int cap = 0, n = 0;
-
+    int count = 0;
     while (fgets(buf, sizeof(buf), f)) {
-        /* trim leading/trailing whitespace */
+        // trim newline and whitespace
         char *p = buf;
-        while (*p && isspace((unsigned char)*p)) p++;
-        if (*p == '\0') continue;
+        while (*p && isspace((unsigned char)*p)) ++p;
         char *end = p + strlen(p) - 1;
-        while (end >= p && isspace((unsigned char)*end)) { *end = '\0'; end--; }
-
-        if ((int)strlen(p) != WORDLEN) continue;
-
-        int valid = 1;
-        for (int i = 0; i < WORDLEN; ++i) {
-            if (!isalpha((unsigned char)p[i])) { valid = 0; break; }
-            p[i] = (char)tolower((unsigned char)p[i]);
-        }
-        if (!valid) continue;
-
-        if (n >= cap) {
-            cap = cap ? cap * 2 : 1024;
-            char **tmp = realloc(arr, cap * sizeof(char *));
-            if (!tmp) { perror("realloc"); break; }
-            arr = tmp;
-        }
-        arr[n] = strdup(p);
-        if (!arr[n]) { perror("strdup"); break; }
-        n++;
+        while (end >= p && isspace((unsigned char)*end)) *end-- = '\0';
+        if ((int)strlen(p) != WORD_LEN) continue;
+        strlower(p);
+        list[count] = malloc(WORD_LEN + 1);
+        strcpy(list[count], p);
+        ++count;
+        if (count >= MAX_WORDS) break;
     }
-
     fclose(f);
-    *out_count = n;
-    return arr;
+    *out_count = count;
+    return list;
 }
 
-/* free list */
-static void free_words(char **arr, int n) {
-    if (!arr) return;
-    for (int i = 0; i < n; ++i) free(arr[i]);
-    free(arr);
+static void free_wordlist(char **list, int count) {
+    if (!list) return;
+    for (int i = 0; i < count; ++i) free(list[i]);
+    free(list);
 }
 
-/* return 1 if candidate (as secret) would produce given_fb when guess is guess */
-static int matches_feedback(const char *candidate, const char *guess, const char *given_fb) {
-    char fb[WORDLEN + 1];
-    compute_feedback(candidate, guess, fb);
-    return strcmp(fb, given_fb) == 0;
+/* Check if candidate would produce exactly feedback when compared to guess */
+static int candidate_matches_feedback(const char *candidate, const char *guess, const char *feedback) {
+    char fb[WORD_LEN+1];
+    get_feedback(candidate, guess, fb);
+    return strcmp(fb, feedback) == 0;
 }
 
-/* filter candidates in-place. returns new count. frees removed strings. */
-static int filter_candidates(char **cands, int cand_count, const char *guess, const char *fb) {
-    int write = 0;
-    for (int i = 0; i < cand_count; ++i) {
-        if (matches_feedback(cands[i], guess, fb)) {
-            if (write != i) {
-                free(cands[write]);
-                cands[write] = cands[i];
-            }
-            write++;
+/* Filter in-place; returns new count. Freed entries are free()d. */
+static int filter_candidates_inplace(char **cands, int count, const char *guess, const char *feedback) {
+    int w = 0;
+    for (int i = 0; i < count; ++i) {
+        if (candidate_matches_feedback(cands[i], guess, feedback)) {
+            cands[w++] = cands[i];
         } else {
             free(cands[i]);
         }
     }
-    return write;
+    return w;
 }
 
-/* check if word is in guessed list */
-static int was_guessed(char **guessed, int guessed_count, const char *w) {
-    for (int i = 0; i < guessed_count; ++i) if (strcmp(guessed[i], w) == 0) return 1;
-    return 0;
-}
+/* Choose best next guess from candidate list using expected remaining-size heuristic:
+   For each possible guess g (we use only current candidates to keep cost lower),
+   simulate all feedback patterns when g is compared to each possible secret s in remaining.
+   For each distinct feedback pattern, count how many secrets produce it; expected_remaining
+   (we use sum(count^2)/N) smaller is better. */
+static int pick_best_guess_index(char **cands, int count) {
+    if (count <= 1) return 0;
+    double best_score = 1e308;
+    int best_idx = 0;
 
-/* choose next unguessed candidate (first one) or NULL */
-static char *choose_next(char **cands, int cand_count, char **guessed, int guessed_count) {
-    for (int i = 0; i < cand_count; ++i) {
-        if (!was_guessed(guessed, guessed_count, cands[i])) return cands[i];
+    // temporary structures
+    // For patterns we store strings in an array and counts in parallel.
+    // This is O(N^2) but acceptable for typical word lists (~2-3k).
+    char pattern[WORD_LEN+1];
+    for (int gi = 0; gi < count; ++gi) {
+        double score_sum = 0.0;
+        // reset pattern arrays for each guess
+        // We will store up to 'count' distinct patterns
+        char **patterns = malloc(sizeof(char*) * count);
+        int *pcounts = malloc(sizeof(int) * count);
+        int pnum = 0;
+
+        for (int si = 0; si < count; ++si) {
+            get_feedback(cands[si], cands[gi], pattern); // pattern when guess=cands[gi] vs secret=cands[si]
+            // find pattern
+            int found = 0;
+            for (int p = 0; p < pnum; ++p) {
+                if (strcmp(patterns[p], pattern) == 0) { pcounts[p]++; found = 1; break; }
+            }
+            if (!found) {
+                patterns[pnum] = malloc(WORD_LEN+1);
+                strcpy(patterns[pnum], pattern);
+                pcounts[pnum] = 1;
+                pnum++;
+            }
+        }
+        // compute sum(count^2)
+        long long ss = 0;
+        for (int p = 0; p < pnum; ++p) ss += (long long)pcounts[p] * (long long)pcounts[p];
+        score_sum = (double)ss / (double)count;
+
+        // cleanup
+        for (int p = 0; p < pnum; ++p) free(patterns[p]);
+        free(patterns);
+        free(pcounts);
+
+        if (score_sum < best_score) {
+            best_score = score_sum;
+            best_idx = gi;
+        }
     }
+    return best_idx;
+}
+
+/* Attempt to find and load a wordlist from a set of likely paths. Caller can also pass explicit path. */
+static char **find_and_load_wordlist(const char **paths, int npaths, int *out_count) {
+    for (int i = 0; i < npaths; ++i) {
+        printf("Trying to load: %s\n", paths[i]);
+        char **wl = load_wordlist_path(paths[i], out_count);
+        if (wl && *out_count > 0) {
+            printf("✓ Successfully loaded %d words from: %s\n", *out_count, paths[i]);
+            return wl;
+        }
+        if (wl) free_wordlist(wl, *out_count);
+    }
+    *out_count = 0;
     return NULL;
 }
 
-/* The API function you declared in header.
-   - target != NULL : automatic mode (solver computes feedback using target)
-   - target == NULL : interactive mode (asks user to type feedback after each guess)
-   - input : path to word-list file (e.g. "word.txt") */
-void solve(const char* target, const char* input) {
-    const char *initial[3] = { "plumb", "crane", "sight" };
-    char **words = NULL;
-    int words_count = 0;
+/* Public API: automatic solver where program computes feedback from provided secret. */
+void solve_with_secret(const char *secret_in, const char *wordlist_path) {
+    if (!secret_in || (int)strlen(secret_in) != WORD_LEN) {
+        fprintf(stderr, "solve_with_secret: secret must be %d letters\n", WORD_LEN);
+        return;
+    }
+    char secret[WORD_LEN+1];
+    strncpy(secret, secret_in, WORD_LEN+1);
+    strlower(secret);
 
-    words = load_words(input ? input : "words.txt", &words_count);
-    if (!words || words_count == 0) {
-        fprintf(stderr, "No words loaded from %s\n", input ? input : "words.txt");
-        free_words(words, words_count);
+    const char *initial_guesses[3] = {"plumb", "crane", "sight"};
+    
+    // FIXED: Put data/words.txt FIRST in the list
+    const char *default_paths[] = {
+        "data/words.txt",
+        "./data/words.txt",
+        "../data/words.txt",
+        "words.txt",
+        "./words.txt",
+        wordlist_path ? wordlist_path : "",
+        "word.txt",
+        "./word.txt"
+    };
+
+    int total_words = 0;
+    char **candidates = find_and_load_wordlist(default_paths, sizeof(default_paths)/sizeof(default_paths[0]), &total_words);
+    if (!candidates || total_words == 0) {
+        fprintf(stderr, "ERROR: No wordlist loaded. Please ensure data/words.txt exists.\n");
         return;
     }
 
-    /* make candidate copy */
-    char **cands = malloc(words_count * sizeof(char*));
-    if (!cands) { perror("malloc"); free_words(words, words_count); return; }
-    int cand_count = 0;
-    for (int i = 0; i < words_count; ++i) cands[cand_count++] = strdup(words[i]);
+    printf("\n=== Solver (automatic) ===\n");
+    printf("Secret: '%s'\n", secret);
+    printf("Wordlist: %d candidates\n\n", total_words);
 
-    char **guessed = malloc((words_count + 3) * sizeof(char*));
-    int guessed_count = 0;
+    char fb[WORD_LEN+1];
+    int attempts = 0;
 
-    char fb[WORDLEN + 1];
-    int attempt;
-
-    printf("Solver started (%s mode). You have %d attempts.\n",
-           (target ? "automatic" : "interactive"), MAX_ATTEMPTS);
-
-    for (attempt = 0; attempt < MAX_ATTEMPTS; ++attempt) {
-        const char *to_guess = NULL;
-        if (attempt < 3) {
-            to_guess = initial[attempt];
-        } else {
-            char *pick = choose_next(cands, cand_count, guessed, guessed_count);
-            if (!pick) {
-                printf("No unguessed candidate available. Stopping early.\n");
-                break;
-            }
-            to_guess = pick;
+    // First three fixed guesses
+    for (int i = 0; i < 3 && attempts < MAX_ATTEMPTS; ++i) {
+        const char *g = initial_guesses[i];
+        get_feedback(secret, g, fb);
+        printf("Attempt %d: %s -> %s (remaining: %d)\n", attempts+1, g, fb, total_words);
+        attempts++;
+        if (strcmp(fb, "GGGGG") == 0) {
+            printf("\n🎉 Solved in %d attempts!\n", attempts);
+            free_wordlist(candidates, total_words);
+            return;
         }
-
-        if (was_guessed(guessed, guessed_count, to_guess)) {
-            /* shouldn't usually happen for initial guesses, but skip if so */
-            attempt--;
-            continue;
-        }
-
-        printf("\nAttempt %d: %s\n", attempt + 1, to_guess);
-
-        if (target) {
-            /* automatic: compute feedback from target */
-            compute_feedback(target, to_guess, fb);
-            printf("Feedback (auto): %s\n", fb);
-        } else {
-            /* interactive: ask user for feedback */
-            printf("Enter feedback (5 chars g/y/b): ");
-            if (scanf("%5s", fb) != 1) {
-                fprintf(stderr, "Input error\n");
-                break;
-            }
-            for (int i = 0; i < WORDLEN; ++i) fb[i] = (char)tolower((unsigned char)fb[i]);
-            fb[WORDLEN] = '\0';
-        }
-
-        guessed[guessed_count++] = strdup(to_guess);
-
-        if (strcmp(fb, "ggggg") == 0) {
-            printf("Solved! Word is: %s (found on attempt %d)\n", to_guess, attempt + 1);
-            break;
-        }
-
-        /* filter */
-        cand_count = filter_candidates(cands, cand_count, to_guess, fb);
-        printf("Candidates remaining: %d\n", cand_count);
-        int show = (cand_count < 10) ? cand_count : 10;
-        for (int i = 0; i < show; ++i) printf(" - %s\n", cands[i]);
-
-        if (cand_count == 0) {
-            printf("No candidates remain after filtering — check your feedback.\n");
-            break;
-        }
+        // filter candidates
+        total_words = filter_candidates_inplace(candidates, total_words, g, fb);
+        if (total_words == 0) break;
     }
 
-    if (attempt >= MAX_ATTEMPTS) {
-        printf("Reached maximum attempts (%d).\n", MAX_ATTEMPTS);
+    // Subsequent attempts: pick best guess among remaining candidates
+    while (attempts < MAX_ATTEMPTS && total_words > 0) {
+        int pick_idx = pick_best_guess_index(candidates, total_words);
+        const char *guess = candidates[pick_idx];
+        get_feedback(secret, guess, fb);
+        printf("Attempt %d: %s -> %s (remaining: %d)\n", attempts+1, guess, fb, total_words);
+        attempts++;
+        if (strcmp(fb, "GGGGG") == 0) {
+            printf("\n🎉 Solved in %d attempts!\n", attempts);
+            free_wordlist(candidates, total_words);
+            return;
+        }
+        total_words = filter_candidates_inplace(candidates, total_words, guess, fb);
+        if (total_words == 0) break;
     }
 
-    for (int i = 0; i < guessed_count; ++i) free(guessed[i]);
-    free(guessed);
-    for (int i = 0; i < cand_count; ++i) free(cands[i]);
-    free(cands);
-    free_words(words, words_count);
+    if (total_words == 0) {
+        printf("\n❌ No candidates remain. Secret likely not in wordlist or inconsistent feedback.\n");
+    } else {
+        printf("\n❌ Attempts exhausted (%d). Remaining candidates: %d. First candidate: %s\n",
+               attempts, total_words, candidates[0]);
+    }
+
+    free_wordlist(candidates, total_words);
 }
 
-/* convenience wrapper for main (interactive solver) */
+/* Public API: interactive solver where the program suggests guesses and user supplies feedback.
+   feedback format: 5 chars, each of G/Y/B (case-insensitive). */
+void solve_interactive(const char *wordlist_path) {
+    // FIXED: Put data/words.txt FIRST in the list
+    const char *default_paths[] = {
+        "data/words.txt",
+        "./data/words.txt",
+        "../data/words.txt",
+        "words.txt",
+        "./words.txt",
+        wordlist_path ? wordlist_path : "",
+        "word.txt",
+        "./word.txt"
+    };
+
+    int total_words = 0;
+    char **candidates = find_and_load_wordlist(default_paths, sizeof(default_paths)/sizeof(default_paths[0]), &total_words);
+    if (!candidates || total_words == 0) {
+        fprintf(stderr, "ERROR: No wordlist loaded. Please ensure data/words.txt exists.\n");
+        return;
+    }
+
+    printf("\n=== Solver (Interactive Mode) ===\n");
+    printf("Wordlist loaded: %d candidates\n", total_words);
+    printf("Feedback format: G (green), Y (yellow), B (black/gray)\n");
+    printf("Example: GYBBN\n\n");
+
+    const char *initial_guesses[3] = {"plumb", "crane", "sight"};
+    char fb_input[256];
+    char fb[WORD_LEN+1];
+    int attempts = 0;
+
+    for (int i = 0; i < 3 && attempts < MAX_ATTEMPTS; ++i) {
+        const char *g = initial_guesses[i];
+        printf("=== Attempt %d/%d ===\n", attempts+1, MAX_ATTEMPTS);
+        printf("Try this word: %s\n", g);
+        printf("Enter feedback (G/Y/B): ");
+        
+        if (!fgets(fb_input, sizeof(fb_input), stdin)) break;
+        
+        // Extract and normalize feedback
+        int fb_pos = 0;
+        for (int j = 0; fb_input[j] && fb_pos < WORD_LEN; ++j) {
+            char c = (char)toupper((unsigned char)fb_input[j]);
+            if (c == 'G' || c == 'Y' || c == 'B' || c == 'N') {
+                // Allow 'N' as alias for 'B' (gray/not present)
+                fb[fb_pos++] = (c == 'N') ? 'B' : c;
+            }
+        }
+        fb[fb_pos] = '\0';
+        
+        if (fb_pos != WORD_LEN) { 
+            printf("❌ Invalid feedback length (got %d chars, expected 5). Try again.\n\n", fb_pos); 
+            --i; 
+            continue; 
+        }
+        
+        attempts++;
+        if (strcmp(fb, "GGGGG") == 0) {
+            printf("\n🎉 Solved in %d attempts!\n", attempts);
+            free_wordlist(candidates, total_words);
+            return;
+        }
+        
+        total_words = filter_candidates_inplace(candidates, total_words, g, fb);
+        printf("Remaining candidates: %d\n\n", total_words);
+        
+        if (total_words == 0) break;
+    }
+
+    while (attempts < MAX_ATTEMPTS && total_words > 0) {
+        int pick_idx = pick_best_guess_index(candidates, total_words);
+        const char *guess = candidates[pick_idx];
+        
+        printf("=== Attempt %d/%d ===\n", attempts+1, MAX_ATTEMPTS);
+        printf("Try this word: %s\n", guess);
+        printf("(Selected from %d candidates)\n", total_words);
+        printf("Enter feedback (G/Y/B): ");
+        
+        if (!fgets(fb_input, sizeof(fb_input), stdin)) break;
+        
+        // Extract and normalize feedback
+        int fb_pos = 0;
+        for (int j = 0; fb_input[j] && fb_pos < WORD_LEN; ++j) {
+            char c = (char)toupper((unsigned char)fb_input[j]);
+            if (c == 'G' || c == 'Y' || c == 'B' || c == 'N') {
+                fb[fb_pos++] = (c == 'N') ? 'B' : c;
+            }
+        }
+        fb[fb_pos] = '\0';
+        
+        if (fb_pos != WORD_LEN) { 
+            printf("❌ Invalid feedback length (got %d chars, expected 5). Try again.\n\n", fb_pos); 
+            continue; 
+        }
+        
+        attempts++;
+        if (strcmp(fb, "GGGGG") == 0) {
+            printf("\n🎉 Solved in %d attempts!\n", attempts);
+            free_wordlist(candidates, total_words);
+            return;
+        }
+        
+        total_words = filter_candidates_inplace(candidates, total_words, guess, fb);
+        printf("Remaining candidates: %d\n\n", total_words);
+        
+        if (total_words == 0) break;
+    }
+
+    if (total_words == 0) {
+        printf("\n❌ No candidates remain. Feedback inconsistent or secret not in wordlist.\n");
+    } else {
+        printf("\n❌ Attempts exhausted (%d). Remaining candidates: %d\n", attempts, total_words);
+        if (total_words <= 10) {
+            printf("Remaining words: ");
+            for (int i = 0; i < total_words; ++i) printf("%s ", candidates[i]);
+            printf("\n");
+        }
+    }
+
+    free_wordlist(candidates, total_words);
+}
+
+// Wrapper function for compatibility with existing code
 void solve_wordle() {
-    solve(NULL, "word.txt");
+    solve_interactive(NULL);
+}
+
+void solve(const char* target, const char* input) {
+    // This function can be used to get feedback for testing
+    char feedback[WORD_LEN + 1];
+    get_feedback(target, input, feedback);
+    printf("%s\n", feedback);
 }
