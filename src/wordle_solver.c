@@ -381,7 +381,7 @@ void solve_interactive(const char *wordlist_path) {
 
     free_wordlist(candidates, total_words);
 }
-
+//h
 // Wrapper function for compatibility with existing code
 void solve_wordle() {
     solve_interactive(NULL);
