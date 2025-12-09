@@ -145,8 +145,8 @@ void play() {
         printf("no words available");
         return;
     }
-    while (attempts < 5 && !won) {
-        printf("Attempt %d/%d: ", attempts + 1, 5);
+    while (attempts < 6 && !won) {
+        printf("Attempt %d/%d: ", attempts + 1, 6);
         if (fgets(input, sizeof(input), stdin) == NULL) {
         }
 
@@ -171,7 +171,7 @@ void play() {
 
         attempts++;
 
-        if (!won && attempts == 5) {
+        if (!won && attempts == 6) {
             printf("game over,the word was %s :) \n", target_word);
         }
     }

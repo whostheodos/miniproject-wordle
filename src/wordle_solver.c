@@ -110,24 +110,17 @@ static int filter_candidates_inplace(char **cands, int count, const char *guess,
     return w;
 }
 
-/* Choose best next guess from candidate list using expected remaining-size heuristic:
-   For each possible guess g (we use only current candidates to keep cost lower),
-   simulate all feedback patterns when g is compared to each possible secret s in remaining.
-   For each distinct feedback pattern, count how many secrets produce it; expected_remaining
-   (we use sum(count^2)/N) smaller is better. */
 static int pick_best_guess_index(char **cands, int count) {
     if (count <= 1) return 0;
     double best_score = 1e308;
     int best_idx = 0;
 
-    // temporary structures
     // For patterns we store strings in an array and counts in parallel.
     // This is O(N^2) but acceptable for typical word lists (~2-3k).
     char pattern[WORD_LEN+1];
     for (int gi = 0; gi < count; ++gi) {
         double score_sum = 0.0;
         // reset pattern arrays for each guess
-        // We will store up to 'count' distinct patterns
         char **patterns = malloc(sizeof(char*) * count);
         int *pcounts = malloc(sizeof(int) * count);
         int pnum = 0;
@@ -164,7 +157,6 @@ static int pick_best_guess_index(char **cands, int count) {
     return best_idx;
 }
 
-/* Attempt to find and load a wordlist from a set of likely paths. Caller can also pass explicit path. */
 static char **find_and_load_wordlist(const char **paths, int npaths, int *out_count) {
     for (int i = 0; i < npaths; ++i) {
         printf("Trying to load: %s\n", paths[i]);
@@ -179,7 +171,6 @@ static char **find_and_load_wordlist(const char **paths, int npaths, int *out_co
     return NULL;
 }
 
-/* Public API: automatic solver where program computes feedback from provided secret. */
 void solve_with_secret(const char *secret_in, const char *wordlist_path) {
     if (!secret_in || (int)strlen(secret_in) != WORD_LEN) {
         fprintf(stderr, "solve_with_secret: secret must be %d letters\n", WORD_LEN);
@@ -191,7 +182,6 @@ void solve_with_secret(const char *secret_in, const char *wordlist_path) {
 
     const char *initial_guesses[3] = {"plumb", "crane", "sight"};
     
-    // FIXED: Put data/words.txt FIRST in the list
     const char *default_paths[] = {
         "data/words.txt",
         "./data/words.txt",
@@ -259,10 +249,7 @@ void solve_with_secret(const char *secret_in, const char *wordlist_path) {
     free_wordlist(candidates, total_words);
 }
 
-/* Public API: interactive solver where the program suggests guesses and user supplies feedback.
-   feedback format: 5 chars, each of G/Y/B (case-insensitive). */
 void solve_interactive(const char *wordlist_path) {
-    // FIXED: Put data/words.txt FIRST in the list
     const char *default_paths[] = {
         "data/words.txt",
         "./data/words.txt",
@@ -340,7 +327,6 @@ void solve_interactive(const char *wordlist_path) {
         
         if (!fgets(fb_input, sizeof(fb_input), stdin)) break;
         
-        // Extract and normalize feedback
         int fb_pos = 0;
         for (int j = 0; fb_input[j] && fb_pos < WORD_LEN; ++j) {
             char c = (char)toupper((unsigned char)fb_input[j]);
@@ -381,14 +367,11 @@ void solve_interactive(const char *wordlist_path) {
 
     free_wordlist(candidates, total_words);
 }
-//h
-// Wrapper function for compatibility with existing code
 void solve_wordle() {
     solve_interactive(NULL);
 }
 
 void solve(const char* target, const char* input) {
-    // This function can be used to get feedback for testing
     char feedback[WORD_LEN + 1];
     get_feedback(target, input, feedback);
     printf("%s\n", feedback);
