@@ -4,6 +4,19 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+
+
+
+ void giveRatingToWords(char** wordList,int* scoreList){// gives each word the sum of each letter ferquencies which i called Rating
+    for(int i=0;i<wordCount;i++) scoreList[i]=0;
+ for (int wordIndex=0;wordIndex<wordCount;wordIndex++){
+    for(int letterIndex=0;letterIndex<5;letterIndex++){
+      scoreList[wordIndex]+= letterFrequencies[wordList[wordIndex][letterIndex]];
+        
+    }
+ }
+
+ }
   
   void doStats(char** wordList ,int* letterFrequencies,int wordCount){ // Calculate frequencies such as letterfrequencies[0] holds frequency of 'a'
     for (int j=0;j<=25;j++ )letterFrequencies[j]=0;
@@ -148,5 +161,13 @@
     cleanUpWordList(wordList);
     letterFrequencies = malloc(sizeof(int) * 26);
     doStats(wordList, letterFrequencies,wordCount);
+    scoreList = malloc(wordCount*sizeof(int));
+    giveRatingToWords(wordList, scoreList);
+   return pick(scoreList,wordList);
+
+    
 
    }
+
+
+   
