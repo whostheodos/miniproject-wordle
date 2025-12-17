@@ -1,43 +1,62 @@
 #ifndef WORDLE_SOLVER_H
 #define WORDLE_SOLVER_H
+
 #include <stdio.h>
 #include <stdbool.h>
 
+#define MAX_WORDS 2315
+#define WORD_LENGTH 5
+#define GUESSES 6
+
+#define GREEN "\033[0;32m"
+#define YELLOW "\033[0;33m"
+#define GRAY "\033[0;90m"
+#define RESET "\033[0m"
 
 typedef struct {
     char letter;
-    int feedback; // 0 = absent, 1 = present, 2 = correct
-    int* positions; // position of the letter in the word
+    int color;     // 0 = gray, 1 = green, 2 = yellow
+    int position;
 } LetterFeedback;
 
-typedef struct LetterFeedbackNode {
-    LetterFeedback data;
-    struct LetterFeedbackNode* next;
-} LetterFeedbackNode;
+/* ===== globals ===== */
+extern char** wordList;
+extern int wordCount;
+extern int* scoreList;
+extern int* topScoreWords;
+extern int topScoreCount;
+extern char target[WORD_LENGTH+1];
+extern char guess[WORD_LENGTH+1];
+extern LetterFeedback* feedback;
+extern bool won;
 
-typedef struct {
-   LetterFeedbackNode* head;
-} Feedback;
+/* ===== core ===== */
+void solve(void);  // NEW function for solver mode
 
-char** wordList; // Array of words loaded from words.txt
-int wordCount;  // Total number of words loaded
-int* letterFrequencies; // Array to hold letter frequencies
+void loadWordsToRAM(FILE* src);
+void Touppercase(char* s);
+LetterFeedback* Try(const char* word);
+bool isInTarget(char c);
 
+/* ===== filtering ===== */
+void deleteNonMatchingWords(void);
+void cleanUpWordList(void);
+bool IsWordMatchesFeedback(const char* word);
 
+bool greenCompatible(const char* word, LetterFeedback f);
+bool yellowCompatible(const char* word, LetterFeedback f);
+bool grayCompatible(const char* word, LetterFeedback f);
+bool isLetterInWord(char c, const char* w);
 
+/* ===== scoring ===== */
+void doStats(void);
+void giveRatingToWords(void);
+int topScore(void);
+void getTopScoreWords(void);
+char* pick(void);
 
-char* getFirstguess();//get the best first guess
-void deleteNonMatchingWords(Feedback feedback,char** wordList);// delete words that do not match the feedback
-void loadWordsToRAM(FILE* src,char** wordList); // load words from words.txt to RAM
-char* getBestGuess(Feedback feedback, int guessNumber);//get the best guess based on feedback and guess number
-bool isLetterInWord(char letter, const char* word);// check if a letter is in a word
-bool isletterInPosition(char letter, int position, const char* word); // check if a letter is in a specific position in a word
-bool grayCompatible(const char* word, LetterFeedback Lfeedback); // check if a word is compatible with gray feedback
-bool yellowCompatible(const char* word, LetterFeedback Lfeedback); // check if a word is compatible with yellow feedback
-bool greenCompatible(const char* word, LetterFeedback Lfeedback); // check if a word is compatible with green feedback
-char* pick (FILE* StatsFile); // picks the best word based on stats file
-void giveRatingToWords(FILE* source, FILE* destination); // give rating to words based on stats file
-bool IsWordMatchesFeedback(const char* word,Feedback feedback); // check if a word is valid by looking it up in words.txt
-void cleanUpWordList(char** wordList); // shift the² words to remove NULLs
-void doStats(char** wordList ,int* letterFrequencies,int WordCount);// return an array of letter frequencies based on the current word list
-#endif 
+/* ===== guesses ===== */
+char* getFirstGuess(void);
+char* getBestGuess(void);
+
+#endif
