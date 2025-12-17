@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 
-#define MAX_WORDS 2315
+#define MAX_WORDS 2316
 #define WORD_LENGTH 5
 #define GUESSES 6
 
