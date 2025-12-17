@@ -1341,6 +1341,7 @@ opera
 opine
 opium
 optic
+orate
 orbit
 order
 organ
