@@ -5,8 +5,9 @@
 #include <ctype.h>
 #include <time.h>
 #include <errno.h>
+#include <stdbool.h>
 
-// globals
+/* ===== globals ===== */
 char** wordList;
 int wordCount;
 
@@ -22,167 +23,156 @@ int* scoreList = NULL;
 int* topScoreWords = NULL;
 int topScoreCount = 0;
 
-int won = 0;
+bool won = false;
 
 /* ================= CORE ================= */
 void Touppercase(char* s)
 {
-    int i;
-    for(i=0; s[i]!='\0'; i++)
+    for (int i = 0; s[i] != '\0'; i++)
         s[i] = toupper((unsigned char)s[i]);
 }
 
 LetterFeedback* Try(const char* word)
 {
-    int i,j;
-    LetterFeedback* fb = (LetterFeedback*)malloc(sizeof(LetterFeedback)*WORD_LENGTH);
-    if(feedback!=NULL) free(feedback);
+    LetterFeedback* fb = malloc(sizeof(LetterFeedback) * WORD_LENGTH);
+    if (feedback != NULL) free(feedback);
     feedback = fb;
-    won = 1;
+    won = true;
 
-    for(i=0; i<WORD_LENGTH; i++)
+    for (int i = 0; i < WORD_LENGTH; i++)
     {
         fb[i].letter = word[i];
         fb[i].position = i;
 
-        if(word[i]==target[i])
+        if (word[i] == target[i])
         {
             fb[i].color = 1;
             printf("%s%c%s", GREEN, word[i], RESET);
         }
         else
         {
-            // check if letter is in target
-            int found = 0;
-            for(j=0; j<WORD_LENGTH; j++)
+            bool found = false;
+            for (int j = 0; j < WORD_LENGTH; j++)
             {
-                if(word[i]==target[j])
+                if (word[i] == target[j])
                 {
-                    found=1;
+                    found = true;
                     break;
                 }
             }
-            if(found)
+
+            if (found)
             {
                 fb[i].color = 2;
                 printf("%s%c%s", YELLOW, word[i], RESET);
-                won = 0;
+                won = false;
             }
             else
             {
                 fb[i].color = 0;
                 printf("%s%c%s", GRAY, word[i], RESET);
-                won = 0;
+                won = false;
             }
         }
     }
     return fb;
 }
 
-// loading words
+/* ================= WORD LIST ================= */
 void loadWordsToRAM(FILE* src)
 {
-    char buf[WORD_LENGTH+2];
+    char buf[WORD_LENGTH + 2];
     wordCount = 0;
-    while(fgets(buf,sizeof(buf),src)!=NULL && wordCount<MAX_WORDS)
+
+    while (fgets(buf, sizeof(buf), src) && wordCount < MAX_WORDS)
     {
-        int len = strlen(buf);
-        if(len>0 && (buf[len-1]=='\n' || buf[len-1]=='\r')) buf[len-1]=0;
-        if(strlen(buf)!=WORD_LENGTH) continue;
-        wordList[wordCount] = (char*)malloc(WORD_LENGTH+1);
-        strcpy(wordList[wordCount],buf);
+        size_t len = strlen(buf);
+        if (len && (buf[len - 1] == '\n' || buf[len - 1] == '\r'))
+            buf[len - 1] = '\0';
+
+        if (strlen(buf) != WORD_LENGTH) continue;
+
+        wordList[wordCount] = malloc(WORD_LENGTH + 1);
+        strcpy(wordList[wordCount], buf);
         Touppercase(wordList[wordCount]);
         wordCount++;
     }
 }
-// filtring
-int greenCompatible(const char* w, LetterFeedback f)
+
+/* ================= FILTERING ================= */
+bool greenCompatible(const char* w, LetterFeedback f)
 {
-    return w[f.position]==f.letter;
+    return w[f.position] == f.letter;
 }
 
-int yellowCompatible(const char* w, LetterFeedback f)
+bool yellowCompatible(const char* w, LetterFeedback f)
 {
-    int i, found=0;
-    for(i=0;i<WORD_LENGTH;i++)
+    bool found = false;
+    for (int i = 0; i < WORD_LENGTH; i++)
+        if (w[i] == f.letter)
+            found = true;
+
+    return found && w[f.position] != f.letter;
+}
+
+bool grayCompatible(const char* w, LetterFeedback f)
+{
+    for (int i = 0; i < WORD_LENGTH; i++)
+        if (w[i] == f.letter)
+            return false;
+    return true;
+}
+
+bool IsWordMatchesFeedback(const char* word)
+{
+    for (int i = 0; i < WORD_LENGTH; i++)
     {
-        if(w[i]==f.letter) found=1;
+        if (feedback[i].color == 1 && !greenCompatible(word, feedback[i])) return false;
+        if (feedback[i].color == 2 && !yellowCompatible(word, feedback[i])) return false;
+        if (feedback[i].color == 0 && !grayCompatible(word, feedback[i])) return false;
     }
-    if(found && w[f.position]!=f.letter) return 1;
-    return 0;
-}
-
-int grayCompatible(const char* w, LetterFeedback f)
-{
-    int i;
-    for(i=0;i<WORD_LENGTH;i++)
-        if(w[i]==f.letter) return 0;
-    return 1;
-}
-
-int IsWordMatchesFeedback(const char* word)
-{
-    int i;
-    for(i=0;i<WORD_LENGTH;i++)
-    {
-        if(feedback[i].color==1 && !greenCompatible(word,feedback[i])) return 0;
-        if(feedback[i].color==2 && !yellowCompatible(word,feedback[i])) return 0;
-        if(feedback[i].color==0 && !grayCompatible(word,feedback[i])) return 0;
-    }
-    return 1;
+    return true;
 }
 
 void deleteNonMatchingWords(void)
 {
-    int i;
-    for(i=0;i<wordCount;i++)
+    for (int i = 0; i < wordCount; i++)
     {
-        if(!IsWordMatchesFeedback(wordList[i]))
+        if (!IsWordMatchesFeedback(wordList[i]))
         {
             free(wordList[i]);
-            wordList[i]=NULL;
+            wordList[i] = NULL;
         }
     }
 }
 
 void cleanUpWordList(void)
 {
-    int i,w;
-    w=0;
-    for(i=0;i<wordCount;i++)
-    {
-        if(wordList[i]!=NULL)
-        {
-            wordList[w]=wordList[i];
-            w++;
-        }
-    }
-    wordCount=w;
+    int w = 0;
+    for (int i = 0; i < wordCount; i++)
+        if (wordList[i])
+            wordList[w++] = wordList[i];
+
+    wordCount = w;
 }
 
-//scoring words
+/* ================= SCORING ================= */
 void doStats(void)
 {
-    int i,p;
-    for(i=0;i<26;i++)
-        letterFrequencies[i]=0;
-    for(i=0;i<26;i++)
-        for(p=0;p<WORD_LENGTH;p++)
-            letterFreqPos[i][p]=0;
+    memset(letterFrequencies, 0, sizeof(letterFrequencies));
+    memset(letterFreqPos, 0, sizeof(letterFreqPos));
 
-    for(i=0;i<wordCount;i++)
+    for (int i = 0; i < wordCount; i++)
     {
-        int seen[26];
-        for(p=0;p<26;p++) seen[p]=0;
-        int pos;
-        for(pos=0;pos<WORD_LENGTH;pos++)
+        bool seen[26] = {0};
+        for (int p = 0; p < WORD_LENGTH; p++)
         {
-            int idx = wordList[i][pos]-'A';
-            letterFreqPos[idx][pos]++;
-            if(!seen[idx])
+            int idx = wordList[i][p] - 'A';
+            letterFreqPos[idx][p]++;
+            if (!seen[idx])
             {
                 letterFrequencies[idx]++;
-                seen[idx]=1;
+                seen[idx] = true;
             }
         }
     }
@@ -190,71 +180,66 @@ void doStats(void)
 
 void giveRatingToWords(void)
 {
-    int w,p;
-    if(scoreList==NULL) scoreList = (int*)malloc(sizeof(int)*wordCount);
-    for(w=0;w<wordCount;w++)
+    if (!scoreList)
+        scoreList = malloc(sizeof(int) * wordCount);
+
+    for (int w = 0; w < wordCount; w++)
     {
-        int score=0;
-        int seen[26];
-        for(p=0;p<26;p++) seen[p]=0;
-        for(p=0;p<WORD_LENGTH;p++)
+        int score = 0;
+        bool seen[26] = {0};
+
+        for (int p = 0; p < WORD_LENGTH; p++)
         {
-            int idx = wordList[w][p]-'A';
+            int idx = wordList[w][p] - 'A';
             score += letterFrequencies[idx];
-            score += letterFreqPos[idx][p]*2;
-            if(seen[idx]) score -= 8;
-            else seen[idx]=1;
+            score += letterFreqPos[idx][p] * 2;
+            if (seen[idx]) score -= 8;
+            else seen[idx] = true;
         }
-        scoreList[w]=score;
+        scoreList[w] = score;
     }
 }
 
 int topScore(void)
 {
-    int i,max, count;
-    max = scoreList[0];
-    topScoreCount=1;
-    for(i=1;i<wordCount;i++)
+    int max = scoreList[0];
+    topScoreCount = 1;
+
+    for (int i = 1; i < wordCount; i++)
     {
-        if(scoreList[i]>max)
+        if (scoreList[i] > max)
         {
             max = scoreList[i];
             topScoreCount = 1;
         }
-        else if(scoreList[i]==max) topScoreCount++;
+        else if (scoreList[i] == max)
+            topScoreCount++;
     }
     return max;
 }
 
 void getTopScoreWords(void)
 {
-    int i,c,max;
-    max = topScore();
-    if(topScoreWords!=NULL) free(topScoreWords);
-    topScoreWords = (int*)malloc(sizeof(int)*topScoreCount);
-    c=0;
-    for(i=0;i<wordCount;i++)
-        if(scoreList[i]==max)
-        {
-            topScoreWords[c]=i;
-            c++;
-        }
+    int max = topScore();
+    free(topScoreWords);
+    topScoreWords = malloc(sizeof(int) * topScoreCount);
+
+    int c = 0;
+    for (int i = 0; i < wordCount; i++)
+        if (scoreList[i] == max)
+            topScoreWords[c++] = i;
 }
 
 char* pick(void)
 {
-    int r;
-    r = rand()%topScoreCount;
-    return wordList[topScoreWords[r]];
+    return wordList[topScoreWords[rand() % topScoreCount]];
 }
 
-//getting guess
+/* ================= GUESSES ================= */
 char* getFirstGuess(void)
 {
-    int r;
-    char* starters[]={"ORATE","SOARE","RAISE","ARISE","SLATE"};
-    r = rand()%5;
-    return starters[r];
+    static char* starters[] = {"ORATE","SOARE","RAISE","ARISE","SLATE"};
+    return starters[rand() % 5];
 }
 
 char* getBestGuess(void)
@@ -266,51 +251,42 @@ char* getBestGuess(void)
     getTopScoreWords();
     return pick();
 }
-// solve function
+
+/* ================= SOLVE ================= */
 void solve(void)
 {
-    int turn;
-    FILE* src;
     srand((unsigned int)time(NULL));
 
-    src = fopen("data/words.txt","r");
-    if(src==NULL)
+    FILE* src = fopen("data/words.txt", "r");
+    if (!src)
     {
         printf("Cannot open data/words.txt\n");
         return;
     }
 
-    wordList = (char**)malloc(sizeof(char*)*MAX_WORDS);
+    wordList = malloc(sizeof(char*) * MAX_WORDS);
     loadWordsToRAM(src);
     fclose(src);
 
-    turn = 1;
-    strcpy(target, wordList[rand()%wordCount]);
-    Touppercase(target);
+    strcpy(target, wordList[rand() % wordCount]);
     printf("Target (hidden): %s\n\n", target);
 
-    while(turn<=GUESSES)
+    for (int turn = 1; turn <= GUESSES; turn++)
     {
-        char* g;
-        if(turn==1)
-            g = getFirstGuess();
-        else
-            g = getBestGuess();
-
-        strcpy(guess,g);
+        char* g = (turn == 1) ? getFirstGuess() : getBestGuess();
+        strcpy(guess, g);
         Touppercase(guess);
         Try(guess);
         printf("\n");
-        if(won)
+
+        if (won)
         {
             printf("Solved in %d guesses!\n", turn);
             break;
         }
-        turn++;
     }
 
-    //free stuff
-    for(turn=0;turn<wordCount;turn++) free(wordList[turn]);
+    for (int i = 0; i < wordCount; i++) free(wordList[i]);
     free(wordList);
     free(feedback);
     free(scoreList);
