@@ -10,7 +10,7 @@
 #define GRAY "\033[0;90m"
 #define RESET "\033[0m"
 
-#define MAX_WORDS 2315 //max to load
+#define MAX_WORDS 2316 //max to load
 #define WORD_LENGTH 5
 
 char word_list[MAX_WORDS][WORD_LENGTH + 1];
