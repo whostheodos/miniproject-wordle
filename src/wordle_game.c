@@ -70,7 +70,7 @@ void uppercase(char* str) {
 
 int is_valid_word(const char* word) {
     if (strlen(word)!=5) return 0;
-    for (int i = 0;i < word_length ;i++) {
+    for (int i = 0;i < WORD_LENGTH ;i++) {
         if (!isalpha(word[i])) return 0;
     }
     for (int i = 0; i < MAX_WORDS; i++) {
@@ -82,16 +82,16 @@ int is_valid_word(const char* word) {
 }
 
 void evaluate(const char* target,const char* input) {
-    char result[word_length];
+    char result[WORD_LENGTH];
     int target_count[26] = {0};
-    int used[word_length];
+    int used[WORD_LENGTH];
     memset(used, 0, sizeof(used));
 
-    for (int i = 0; i < word_length; i++) {
+    for (int i = 0; i < WORD_LENGTH; i++) {
         target_count[target[i] - 'A']++;
     }
 
-    for (int i = 0; i < word_length; i++) {
+    for (int i = 0; i < WORD_LENGTH; i++) {
         if (input[i] == target[i]) {
             result[i] = 'G';
             used[i] = 1;
@@ -101,7 +101,7 @@ void evaluate(const char* target,const char* input) {
         }
     }
 
-    for (int i = 0; i < word_length; i++) {
+    for (int i = 0; i < WORD_LENGTH; i++) {
         if (used[i]) continue;
 
         int idx = input[i] - 'A';
@@ -110,7 +110,7 @@ void evaluate(const char* target,const char* input) {
             target_count[idx]--;
         }
     }
-    for (int i = 0; i < word_length; i++) {
+    for (int i = 0; i < WORD_LENGTH; i++) {
         if (result[i] == 'G') {
             printf("%s%c%s ",GREEN,input[i],RESET);
         }else if (result[i] == 'Y') {

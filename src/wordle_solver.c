@@ -14,7 +14,7 @@ int wordCount;
 char target[WORD_LENGTH+1];
 char guess[WORD_LENGTH+1];
 
-LetterFeedback* feedback = NULL;
+ LetterFeedback* feedback = NULL;
 
 int letterFrequencies[26];
 int letterFreqPos[26][WORD_LENGTH];
@@ -253,6 +253,7 @@ char* getBestGuess(void)
 }
 
 /* ================= SOLVE ================= */
+
 void solve(void)
 {
     srand((unsigned int)time(NULL));
@@ -268,24 +269,102 @@ void solve(void)
     loadWordsToRAM(src);
     fclose(src);
 
-    strcpy(target, wordList[rand() % wordCount]);
-    printf("Target (hidden): %s\n\n", target);
+    int solveMode;
+    printf("Choose solving mode:\n1: Interactive\n2: Automatic\n> ");
+    scanf("%d", &solveMode);
+    getchar(); // consume leftover newline
 
-    for (int turn = 1; turn <= GUESSES; turn++)
+    if (solveMode == 2) // Automatic mode
     {
-        char* g = (turn == 1) ? getFirstGuess() : getBestGuess();
-        strcpy(guess, g);
-        Touppercase(guess);
-        Try(guess);
-        printf("\n");
+        strcpy(target, wordList[rand() % wordCount]);
+        printf("Target (hidden): %s\n\n", target);
 
-        if (won)
+        for (int turn = 1; turn <= GUESSES; turn++)
         {
-            printf("Solved in %d guesses!\n", turn);
-            break;
+            char* g = (turn == 1) ? getFirstGuess() : getBestGuess();
+            strcpy(guess, g);
+            Touppercase(guess);
+            Try(guess);
+            printf("\n");
+
+            if (won)
+            {
+                printf("Solved in %d guesses!\n", turn);
+                break;
+            }
+        }
+    }
+    else // Interactive mode
+    {
+        printf("Interactive mode: enter feedback for suggested guesses.\n");
+        for (int turn = 1; turn <= GUESSES; turn++)
+        {
+            char* g = (turn == 1) ? getFirstGuess() : getBestGuess();
+            strcpy(guess, g);
+            Touppercase(guess);
+
+            printf("Suggested guess: %s\n", guess);
+
+            // Get feedback from user (G=green, Y=yellow, B=gray)
+            char fbInput[WORD_LENGTH + 2];
+            do {
+                printf("Enter feedback (G=green, Y=yellow, B=gray): ");
+                fgets(fbInput, sizeof(fbInput), stdin);
+                fbInput[strcspn(fbInput, "\r\n")] = 0;
+            } while (strlen(fbInput) != WORD_LENGTH);
+
+            // Fill feedback array
+            if (feedback) free(feedback);
+            feedback = malloc(sizeof(LetterFeedback) * WORD_LENGTH);
+            for (int i = 0; i < WORD_LENGTH; i++)
+            {
+                feedback[i].letter = guess[i];
+                feedback[i].position = i;
+                switch (toupper(fbInput[i]))
+                {
+                    case 'G': feedback[i].color = 1; break;
+                    case 'Y': feedback[i].color = 2; break;
+                    case 'B': feedback[i].color = 0; break;
+                    default: feedback[i].color = 0; break;
+                }
+            }
+
+            // Filter words based on feedback
+            deleteNonMatchingWords();
+            cleanUpWordList();
+
+            // Print colored guess
+            for (int i = 0; i < WORD_LENGTH; i++)
+            {
+                switch (feedback[i].color)
+                {
+                    case 1: printf("%s%c%s", GREEN, guess[i], RESET); break;
+                    case 2: printf("%s%c%s", YELLOW, guess[i], RESET); break;
+                    case 0: printf("%s%c%s", GRAY, guess[i], RESET); break;
+                }
+            }
+            printf("\n");
+
+            // Check win condition
+            won = true;
+            for (int i = 0; i < WORD_LENGTH; i++)
+                if (feedback[i].color != 1) won = false;
+
+            if (won)
+            {
+                printf("Program solved it in %d guesses!\n", turn);
+                break;
+            }
+
+            if (wordCount == 0)
+            {
+                printf("No matching words left!\n");
+                break;
+            }
         }
     }
 
+    // Free memory
     for (int i = 0; i < wordCount; i++) free(wordList[i]);
     free(wordList);
     free(feedback);

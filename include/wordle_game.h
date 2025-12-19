@@ -1,6 +1,5 @@
 #ifndef WORDLE_GAME_H
 #define WORDLE_GAME_H
-#define word_length 5
 
 void play();
 
